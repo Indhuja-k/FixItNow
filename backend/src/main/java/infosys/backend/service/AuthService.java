@@ -2,6 +2,7 @@ package infosys.backend.service;
 
 import infosys.backend.dto.LoginRequest;
 import infosys.backend.dto.RegisterRequest;
+import infosys.backend.exception.EmailAlreadyExistsException;
 import infosys.backend.model.User;
 import infosys.backend.repository.UserRepository;
 import infosys.backend.security.JwtUtil;
@@ -20,7 +21,7 @@ public class AuthService {
     // ✅ Register: save user only (Customer/Admin)
     public User register(RegisterRequest request) {
         if (userRepository.findByEmail(request.getEmail()).isPresent()) {
-            throw new RuntimeException("Email already exists");
+            throw new EmailAlreadyExistsException("Email already exists");
         }
 
         User user = new User();

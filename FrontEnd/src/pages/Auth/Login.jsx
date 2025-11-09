@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   HiOutlineMail,
@@ -8,9 +8,7 @@ import {
   HiLogin,
 } from "react-icons/hi";
 import { FaHome, FaWrench, FaTools, FaBolt, FaShower } from "react-icons/fa";
-import { userContext } from "../../content/Userprovider";
-import { login } from "../../services/api";
-import { validateEmail } from "../../utils/helper";
+import { useAuth } from "../../context/AuthContext";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -20,12 +18,12 @@ export default function Login() {
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
 
-  const { UpdateUser } = useContext(userContext);
+  const { login: handleAuthLogin } = useAuth();
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!validateEmail(email) || !password) {
+    if (!email || !password) {
       setError("Please fill in all fields");
       return;
     }
@@ -34,37 +32,27 @@ export default function Login() {
     setLoading(true);
 
     try {
-      // 🔑 Call backend login API
-      const res = await login({ email, password });
-
-      // Backend returns { token, role }
-      const { token, role } = res.data;
-
-      // Save token for authenticated requests
-      localStorage.setItem("token", token);
-
-      // Build logged-in user object
-      const loggedInUser = {
-        email,
-        role,
-        hasProfile: role === "PROVIDER" ? false : true, // assume provider profile incomplete until they add services
-      };
-
-      // Save in global context
-      UpdateUser(loggedInUser);
-
-      // ✅ Redirect logic
-      if (role === "PROVIDER") {
-        navigate("/provider-dashboard");
-      } else if (role === "ADMIN") {
-        navigate("/admin-dashboard");
-      } else if (role === "CUSTOMER") {
-        navigate("/customer-dashboard");
+      // Use AuthContext login
+      const result = await handleAuthLogin({ email, password });
+      
+      if (result.success) {
+        console.log("✅ Login successful, role:", result.role);
+        
+        // Navigate based on role
+        if (result.role === "PROVIDER") {
+          navigate("/provider-dashboard", { replace: true });
+        } else if (result.role === "ADMIN") {
+          navigate("/admin-dashboard", { replace: true });
+        } else if (result.role === "CUSTOMER") {
+          navigate("/customer-dashboard", { replace: true });
+        } else {
+          navigate("/", { replace: true });
+        }
       } else {
-        navigate("/"); // fallback → home/dashboard
+        setError("Invalid credentials. Please try again.");
       }
     } catch (err) {
-      console.error("Login failed:", err);
+      console.error("❌ Login failed:", err);
       setError("Invalid credentials. Please try again.");
     } finally {
       setLoading(false);

@@ -1,7 +1,6 @@
 import { useContext, useEffect } from "react";
 import { userContext } from "../context/UserContext";
 import { useNavigate } from "react-router-dom";
-import { API_PATHS } from "../utils/apiPath";
 
 export const useUserAuth = () => {
   const { user, updateUser, clearUser } = useContext(userContext);
@@ -14,7 +13,7 @@ export const useUserAuth = () => {
 
     const fetchUserInfo = async () => {
       try {
-        const response = await axiosInstance.get(API_PATHS.CUSTOMER.GET_USER_INFO);
+        // const response = await axiosInstance.get(API_PATHS.AUTH.GET_USER_INFO);
         if (isMounted && response.data) {
           updateUser(response.data);
         }
