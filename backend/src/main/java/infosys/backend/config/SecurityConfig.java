@@ -26,21 +26,34 @@ public class SecurityConfig {
     @Bean
     public SecurityFilterChain securityFilterChain(HttpSecurity http) throws Exception {
         http
-            .cors(cors -> {}) // enable CORS
-            .csrf(csrf -> csrf.disable()) // disable CSRF for API
+            .cors(cors -> {}) // Enable CORS
+            .csrf(csrf -> csrf.disable()) // Disable CSRF for APIs
             .authorizeHttpRequests(auth -> auth
-                // Allow registration and login without authentication
+                // 🔓 Public endpoints
                 .requestMatchers("/api/auth/**").permitAll()
-                .requestMatchers(HttpMethod.POST, "/api/services").permitAll()
-                .requestMatchers("/api/services").permitAll()
-                .requestMatchers(HttpMethod.GET, "/api/services/provider/**").authenticated()
-                // Users endpoint requires authentication
+                .requestMatchers(HttpMethod.GET, "/api/services").permitAll()  // public service listing
+                .requestMatchers("/uploads/**").permitAll()  // allow static file access
+                .requestMatchers("/ws/**").permitAll()       // allow WebSocket handshake
+                .requestMatchers(HttpMethod.OPTIONS, "/**").permitAll() // preflight requests
+
+                // 🔐 Protected endpoints
+                .requestMatchers("/api/services/**").authenticated()
                 .requestMatchers("/api/users/**").authenticated()
-                // All other requests require authentication
+                .requestMatchers("/bookings/**").authenticated()
+                .requestMatchers("/reviews/**").authenticated()
+                .requestMatchers("/api/messages/**").authenticated()
+                .requestMatchers("/api/documents/**").authenticated()
+                .requestMatchers("/api/reports/**").authenticated()
+
+                // 🧮 Admin Analytics endpoints (secured)
+                .requestMatchers("/api/admin/analytics/**").authenticated()
+                // 👉 If you want only admin role, you can use:
+                // .requestMatchers("/api/admin/analytics/**").hasRole("ADMIN")
+
+                // All other requests
                 .anyRequest().authenticated()
             );
 
-        // Add JWT filter before username/password filter
         http.addFilterBefore(jwtAuthFilter, UsernamePasswordAuthenticationFilter.class);
 
         return http.build();

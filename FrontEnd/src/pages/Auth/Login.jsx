@@ -1,4 +1,4 @@
-import React, { useState, useContext } from "react";
+import React, { useState } from "react";
 import { Link, useNavigate } from "react-router-dom";
 import {
   HiOutlineMail,
@@ -8,9 +8,8 @@ import {
   HiLogin,
 } from "react-icons/hi";
 import { FaHome, FaWrench, FaTools, FaBolt, FaShower } from "react-icons/fa";
-import { userContext } from "../../content/Userprovider";
-import { login } from "../../services/api";
-import { validateEmail } from "../../utils/helper";
+import { useAuth } from "../../context/AuthContext"; // Use AuthContext instead
+import { login, getProviderDocuments, getMyProfile } from "../../services/api";
 
 export default function Login() {
   const [email, setEmail] = useState("");
@@ -19,53 +18,102 @@ export default function Login() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const navigate = useNavigate();
-
-  const { UpdateUser } = useContext(userContext);
+  const { login: authLogin } = useAuth(); // Use login from AuthContext
 
   const handleLogin = async (e) => {
     e.preventDefault();
 
-    if (!validateEmail(email) || !password) {
-      setError("Please fill in all fields");
+    if (!email || !password) {
+      setError("Please fill in all fields.");
       return;
     }
 
-    setError("");
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(email)) {
+      setError("Please enter a valid email address.");
+      return;
+    }
+
     setLoading(true);
+    setError("");
 
     try {
-      // 🔑 Call backend login API
-      const res = await login({ email, password });
-
-      // Backend returns { token, role }
-      const { token, role } = res.data;
-
-      // Save token for authenticated requests
-      localStorage.setItem("token", token);
-
-      // Build logged-in user object
-      const loggedInUser = {
-        email,
-        role,
-        hasProfile: role === "PROVIDER" ? false : true, // assume provider profile incomplete until they add services
-      };
-
-      // Save in global context
-      UpdateUser(loggedInUser);
-
-      // ✅ Redirect logic
-      if (role === "PROVIDER") {
-        navigate("/provider-dashboard");
-      } else if (role === "ADMIN") {
-        navigate("/admin-dashboard");
-      } else if (role === "CUSTOMER") {
-        navigate("/customer-dashboard");
-      } else {
-        navigate("/"); // fallback → home/dashboard
+      // 1️⃣ Login API using AuthContext
+      const success = await authLogin({ email, password });
+      
+      if (!success) {
+        setError("Login failed. Please check your credentials.");
+        return;
       }
+
+      // 2️⃣ Get user profile to determine role
+      const userRes = await getMyProfile();
+      const { role, verified } = userRes.data;
+
+      // 3️⃣ PROVIDER-specific checks
+      if (role === "PROVIDER") {
+        const providerId = userRes.data.id;
+
+        // Fetch documents for this provider
+        const providerDocsRes = await getProviderDocuments(providerId);
+        const providerDocs = Array.isArray(providerDocsRes.data)
+          ? providerDocsRes.data
+          : [];
+
+        console.log("Provider documents:", providerDocs);
+
+        // Check rejected documents
+        const rejectedDoc = providerDocs.find(doc => doc.rejected);
+        if (rejectedDoc) {
+          setError(
+            `Message from admin: ${rejectedDoc.rejectionReason }. Account has been rejected `
+          );
+          return;
+        }
+
+        // Check verification status
+        if (!verified) {
+          setError(
+            "Your provider account is pending for admin verification. Please wait until approved."
+          );
+          return;
+        }
+
+        navigate("/provider-dashboard");
+        return;
+      }
+
+      // 4️⃣ ADMIN
+      if (role === "ADMIN") {
+        navigate("/admin-dashboard");
+        return;
+      }
+
+      // 5️⃣ CUSTOMER
+      if (role === "CUSTOMER") {
+        navigate("/customer-dashboard");
+        return;
+      }
+
+      // 6️⃣ Fallback
+      navigate("/");
+
     } catch (err) {
       console.error("Login failed:", err);
-      setError("Invalid credentials. Please try again.");
+
+      const serverMsg = err?.response?.data?.message || "";
+
+      if (serverMsg.toLowerCase().includes("invalid credentials") || err?.response?.status === 401) {
+        setError("Incorrect password. Please try again.");
+      } else if (
+        serverMsg.toLowerCase().includes("user not found") ||
+        serverMsg.toLowerCase().includes("email not found") ||
+        err?.response?.status === 404
+      ) {
+        setError("Email does not exist. Please sign up first.");
+      } else {
+        setError("Unable to login. Please check your network and try again.");
+      }
     } finally {
       setLoading(false);
     }
@@ -73,7 +121,7 @@ export default function Login() {
 
   return (
     <div className="relative min-h-screen flex flex-col justify-center items-center overflow-hidden">
-      {/* Blurred Background */}
+      {/* Background */}
       <div
         className="absolute inset-0 bg-cover bg-center filter blur-sm scale-105"
         style={{ backgroundImage: "url('/tools.jpeg')" }}
@@ -89,13 +137,13 @@ export default function Login() {
         <span className="text-white font-bold text-xl">FixItNow</span>
       </div>
 
-      {/* Tools Row */}
+      {/* Icons Row */}
       <div className="relative z-10 flex space-x-6 mb-8 text-white text-3xl">
-        <FaHome title="Home Repair" className="hover:text-indigo-400 transition" />
-        <FaWrench title="Plumbing" className="hover:text-indigo-400 transition" />
-        <FaTools title="General Services" className="hover:text-indigo-400 transition" />
-        <FaBolt title="Electrical" className="hover:text-indigo-400 transition" />
-        <FaShower title="Bathroom Fixes" className="hover:text-indigo-400 transition" />
+        <FaHome className="hover:text-indigo-400 transition" title="Home Repair" />
+        <FaWrench className="hover:text-indigo-400 transition" title="Plumbing" />
+        <FaTools className="hover:text-indigo-400 transition" title="General Services" />
+        <FaBolt className="hover:text-indigo-400 transition" title="Electrical" />
+        <FaShower className="hover:text-indigo-400 transition" title="Bathroom Fixes" />
       </div>
 
       {/* Form */}
@@ -106,40 +154,54 @@ export default function Login() {
         </p>
 
         <form className="w-full flex flex-col space-y-6" onSubmit={handleLogin}>
-          {/* Email */}
+          {/* Email - wrapper uses relative so icon centers via inset-y-0 */}
           <div className="relative">
-            <HiOutlineMail className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white text-xl" />
+            <div className="absolute left-3 inset-y-0 flex items-center pointer-events-none">
+              <HiOutlineMail className="text-white text-xl" />
+            </div>
+
             <input
               type="email"
               placeholder="Email"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="w-full pl-10 px-4 py-3 rounded-md border border-white bg-white/20 text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className={`w-full pl-12 px-4 py-3 rounded-md border 
+                
+             bg-white/20 text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-indigo-500`}
             />
+
+            
           </div>
 
           {/* Password */}
           <div className="relative">
-            <HiOutlineLockClosed className="absolute left-3 top-1/2 transform -translate-y-1/2 text-white text-xl" />
+            <div className="absolute left-3 inset-y-0 flex items-center pointer-events-none">
+              <HiOutlineLockClosed className="text-white text-xl" />
+            </div>
+
             <input
               type={showPassword ? "text" : "password"}
               placeholder="Password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="w-full pr-10 pl-10 px-4 py-3 rounded-md border border-white bg-white/20 text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
+              className="w-full pr-12 pl-12 px-4 py-3 rounded-md border border-white bg-white/20 text-white placeholder-white focus:outline-none focus:ring-2 focus:ring-indigo-500"
             />
             <button
               type="button"
-              className="absolute right-3 top-1/2 transform -translate-y-1/2 text-white text-xl"
               onClick={() => setShowPassword(!showPassword)}
+              className="absolute right-3 inset-y-0 flex items-center text-white"
             >
               {showPassword ? <HiOutlineEyeOff /> : <HiOutlineEye />}
             </button>
           </div>
 
-          {error && <p className="text-red-400 text-sm">{error}</p>}
+          {error && (
+            <p className="text-red-400 text-sm text-center bg-black/30 p-2 rounded">
+              {error}
+            </p>
+          )}
 
-          {/* Submit Button */}
+          {/* Button */}
           <button
             type="submit"
             disabled={loading}
@@ -151,7 +213,7 @@ export default function Login() {
         </form>
 
         <p className="text-white text-sm mt-6">
-          Don't have an account?{" "}
+          Don’t have an account?{" "}
           <Link to="/register" className="underline font-medium">
             Sign Up
           </Link>
